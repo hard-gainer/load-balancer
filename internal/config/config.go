@@ -10,14 +10,20 @@ import (
 
 // Config is a main config
 type Config struct {
-	Servers  []Server `yaml:"servers"`
-	DBConfig DBConfig  `yaml:"db"`
+	Servers   []Server  `yaml:"servers"`
+	AppConfig AppConfig `yaml:"app"`
+	DBConfig  DBConfig  `yaml:"db"`
 }
 
 // Servers is a config for backends
 type Server struct {
 	URL    string `yaml:"url"`
 	Weight int    `yaml:"weight"`
+}
+
+// AppConfig is a config for application
+type AppConfig struct {
+	Port string `yaml:"port"`
 }
 
 // DBConfig is a config for PostgreSQL
