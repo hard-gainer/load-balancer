@@ -1,1 +1,4 @@
 *.drawio
+
+config.yaml
+!config.yaml.example
