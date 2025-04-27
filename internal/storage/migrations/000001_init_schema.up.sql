@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS clients(
+    id SERIAL PRIMARY KEY,
+    client_id VARCHAR(255) NOT NULL UNIQUE,
+    capacity INTEGER NOT NULL,
+    rate_per_sec INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
