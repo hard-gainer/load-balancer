@@ -12,6 +12,9 @@ import (
 
 	"github.com/hard-gainer/load-balancer/internal/api"
 	"github.com/hard-gainer/load-balancer/internal/config"
+	"github.com/hard-gainer/load-balancer/internal/models"
+	"github.com/hard-gainer/load-balancer/internal/service"
+	"github.com/hard-gainer/load-balancer/internal/storage"
 )
 
 func main() {
@@ -27,11 +30,31 @@ func main() {
 		"db", cfg.DBConfig.URL,
 	)
 
+	storage, err := storage.NewPostgres(cfg)
+	if err != nil {
+		slog.Error("failed to initialize storage", "error", err)
+		os.Exit(1)
+	}
+
+	service := service.NewLoadBalancerService(storage)
+
+	backends := make([]models.Backend, 0)
+	for _, elem := range cfg.Servers {
+		backend := models.Backend{
+			URL:    elem.URL,
+			Weight: elem.Weight,
+		}
+		backends = append(backends, backend)
+	}
+
+	handler := api.NewLoadBalancerHandler(service, backends)
+
 	router := http.NewServeMux()
-	router.HandleFunc("GET /clients", api.FindAllClients)
-	router.HandleFunc("POST /clients", api.CreateClient)
-	router.HandleFunc("PATCH /clients", api.UpdateClient)
-	router.HandleFunc("DELETE /clients", api.DeleteClient)
+	router.HandleFunc("GET /clients", handler.FindAllClients)
+	router.HandleFunc("POST /clients", handler.CreateClient)
+	router.HandleFunc("PUT /clients", handler.UpdateClient)
+	router.HandleFunc("DELETE /clients", handler.DeleteClient)
+	// router.HandleFunc("/request", handler.HandleRequest)
 
 	loggedRouter := api.LoggingMiddleware(router)
 
