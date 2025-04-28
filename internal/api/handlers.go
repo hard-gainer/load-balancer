@@ -6,15 +6,20 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"sync"
 
 	"github.com/hard-gainer/load-balancer/internal/models"
 	"github.com/hard-gainer/load-balancer/internal/service"
-	"github.com/hard-gainer/load-balancer/internal/storage"
 )
 
 type LoadBalancerHandler struct {
 	loadBalancerService service.LoadBalancerService
 	backends            []models.Backend
+	mu                  sync.Mutex
+	counter             int
+	buffer              []models.Backend
 }
 
 func NewLoadBalancerHandler(
@@ -23,6 +28,9 @@ func NewLoadBalancerHandler(
 ) *LoadBalancerHandler {
 	return &LoadBalancerHandler{
 		loadBalancerService: loadBalancerService,
+		backends:            backends,
+		counter:             0,
+		buffer:              make([]models.Backend, 0),
 	}
 }
 
@@ -35,22 +43,117 @@ type FindAllClientsResponse struct {
 	Clients []models.Client `json:"clients,omitempty"`
 }
 
-// Client request/response types
+// Client request
 type ClientRequest struct {
-	ClientID   string `json:"client_id"`
-	Capacity   int    `json:"capacity"`
-	RatePerSec int    `json:"rate_per_sec"`
+	ClientID   string `json:"client_id,omitempty"`
+	Capacity   int    `json:"capacity,omitempty"`
+	RatePerSec int    `json:"rate_per_sec,omitempty"`
 }
 
+// Client response
 type ClientResponse struct {
 	Client models.Client `json:"client"`
 }
 
-// func (h *LoadBalancerHandler) HandleRequest(w http.ResponseWriter, r *http.Request) {
-// 	//
-// 	h.backends
-// 	proxy := httputil.NewSingleHostReverseProxy()
-// }
+func (h *LoadBalancerHandler) HandleRequest(w http.ResponseWriter, r *http.Request) {
+	if len(h.backends) == 0 {
+		slog.Error("no backends available")
+		renderError(w, "No backends available", http.StatusServiceUnavailable)
+		return
+	}
+
+	clientID := r.Header.Get("client_id")
+	// if clientID is empty we use client's ip as a clientID
+	if clientID == "" {
+		clientID = r.RemoteAddr
+	}
+
+	allowed, err := h.loadBalancerService.IsRequestAllowed(r.Context(), clientID)
+	if err != nil {
+		slog.Error("rate limiting error", "error", err, "client_id", clientID)
+		renderError(w, "Rate limiting service error", http.StatusInternalServerError)
+		return
+	}
+
+	if !allowed {
+		slog.Info("rate limit exceeded", "client_id", clientID)
+		w.Header().Set("Retry-After", "5")
+		renderError(w, "Rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+
+	h.mu.Lock()
+
+	var target models.Backend
+	backendFound := false
+
+	// if h.buffer is empty - find new backend
+	// otherwise pop backend from h.buffer
+	if len(h.buffer) == 0 {
+		startIdx := h.counter
+		for i := 0; i < len(h.backends); i++ {
+			currIdx := (startIdx + i) % len(h.backends)
+			backend := h.backends[currIdx]
+
+			_, err := url.Parse(backend.URL)
+			if err != nil {
+				slog.Error("failed to parse url", "url", backend.URL, "error", err)
+				continue
+			}
+
+			h.counter = (currIdx + backend.Weight) % len(h.backends)
+			// push backend to buffer weight-1 times
+			for j := 0; j < backend.Weight-1; j++ {
+				h.buffer = append(h.buffer, backend)
+			}
+			target = backend
+			backendFound = true
+		}
+	} else {
+		target = h.buffer[0]
+		h.buffer = h.buffer[1:]
+		backendFound = true
+	}
+
+	h.mu.Unlock()
+
+	if !backendFound {
+		slog.Error("all backends are unavailable")
+		renderError(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	success, err := h.loadBalancerService.CountRequest(r.Context(), clientID)
+	if err != nil || !success {
+		slog.Error("failed to count request", "error", err, "client_id", clientID)
+		renderError(w, "Rate limiting error", http.StatusInternalServerError)
+		return
+	}
+
+	targetURL, _ := url.Parse(target.URL)
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		slog.Error("backend error",
+			"url", target.URL,
+			"error", err,
+			"method", r.Method,
+			"path", r.URL.Path)
+		renderError(w, "Backend server error", http.StatusBadGateway)
+	}
+
+	r.Header.Set("X-Forwarded-For", r.RemoteAddr)
+	r.Header.Set("X-Forwarded-Host", r.Host)
+	r.Header.Set("X-Forwarded-Proto", "http")
+
+	slog.Info("forwarding request",
+		"client", clientID,
+		"method", r.Method,
+		"path", r.URL.Path,
+		"backend", target.URL)
+
+	proxy.ServeHTTP(w, r)
+}
 
 // FindAllClients returns all clients
 func (h *LoadBalancerHandler) FindAllClients(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +204,7 @@ func (h *LoadBalancerHandler) CreateClient(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		slog.Error("failed to create client", "error", err, "client_id", req.ClientID)
 
-		if errors.Is(err, storage.ErrClientAlreadyExists) {
+		if errors.Is(err, service.ErrClientAlreadyExists) {
 			renderError(w, "Client with this ID already exists", http.StatusConflict)
 			return
 		}
@@ -150,7 +253,7 @@ func (h *LoadBalancerHandler) UpdateClient(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		slog.Error("failed to update client", "error", err, "client_id", req.ClientID)
 
-		if errors.Is(err, storage.ErrClientNotFound) {
+		if errors.Is(err, service.ErrClientNotFound) {
 			renderError(w, "Client not found", http.StatusNotFound)
 			return
 		}
@@ -177,7 +280,7 @@ func (h *LoadBalancerHandler) DeleteClient(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		slog.Error("failed to delete client", "error", err, "client_id", clientID)
 
-		if errors.Is(err, storage.ErrClientNotFound) {
+		if errors.Is(err, service.ErrClientNotFound) {
 			renderError(w, "Client not found", http.StatusNotFound)
 			return
 		}

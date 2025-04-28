@@ -30,13 +30,21 @@ func main() {
 		"db", cfg.DBConfig.URL,
 	)
 
+	slog.Info("initializing storage")
 	storage, err := storage.NewPostgres(cfg)
 	if err != nil {
 		slog.Error("failed to initialize storage", "error", err)
 		os.Exit(1)
 	}
+	slog.Info("storage successfully initialized")
 
-	service := service.NewLoadBalancerService(storage)
+	slog.Info("initializing service")
+	service, err := service.NewLoadBalancerService(storage)
+	if err != nil {
+		slog.Error("failed to initialize service", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("service successfully initialized")
 
 	backends := make([]models.Backend, 0)
 	for _, elem := range cfg.Servers {
@@ -54,7 +62,7 @@ func main() {
 	router.HandleFunc("POST /clients", handler.CreateClient)
 	router.HandleFunc("PUT /clients", handler.UpdateClient)
 	router.HandleFunc("DELETE /clients", handler.DeleteClient)
-	// router.HandleFunc("/request", handler.HandleRequest)
+	router.HandleFunc("/request", handler.HandleRequest)
 
 	loggedRouter := api.LoggingMiddleware(router)
 
