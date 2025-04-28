@@ -26,6 +26,7 @@ type LoadBalancerService interface {
 	DeleteClient(ctx context.Context, id string) error
 	IsRequestAllowed(ctx context.Context, clientID string) (bool, error)
 	CountRequest(ctx context.Context, clientID string) (bool, error)
+    Shutdown()
 }
 
 type LoadBalancerServiceImpl struct {
@@ -297,4 +298,8 @@ func (s *LoadBalancerServiceImpl) CountRequest(ctx context.Context, clientID str
 	}
 
 	return false, nil
+}
+
+func (s *LoadBalancerServiceImpl) Shutdown() {
+    close(s.done)
 }

@@ -16,6 +16,7 @@ type Repository interface {
 	SaveClient(ctx context.Context, client models.Client) error
 	UpdateClient(ctx context.Context, client models.Client) error
 	RemoveClient(ctx context.Context, clientID string) error
+	Close()
 }
 
 type qurier interface {
@@ -134,4 +135,8 @@ func (repo *PostgresRepository) RemoveClient(ctx context.Context, clientID strin
 	}
 
 	return nil
+}
+
+func (repo *PostgresRepository) Close() {
+	repo.storage.Close()
 }

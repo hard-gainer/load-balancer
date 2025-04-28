@@ -83,6 +83,8 @@ func main() {
 	<-quit
 	slog.Info("shutting down server")
 
+	service.Shutdown()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -91,4 +93,6 @@ func main() {
 	}
 
 	slog.Info("server exited properly")
+
+	storage.Close()
 }
