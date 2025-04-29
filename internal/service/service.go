@@ -26,7 +26,7 @@ type LoadBalancerService interface {
 	DeleteClient(ctx context.Context, id string) error
 	IsRequestAllowed(ctx context.Context, clientID string) (bool, error)
 	CountRequest(ctx context.Context, clientID string) (bool, error)
-    Shutdown()
+	Shutdown()
 }
 
 type LoadBalancerServiceImpl struct {
@@ -45,7 +45,7 @@ func NewLoadBalancerService(storage storage.Repository) (LoadBalancerService, er
 		done:        make(chan struct{}),
 	}
 
-	if err := service.InitRateLimiters(context.Background()); err != nil {
+	if err := service.InitRateLimiter(context.Background()); err != nil {
 		return nil, err
 	}
 
@@ -54,11 +54,11 @@ func NewLoadBalancerService(storage storage.Repository) (LoadBalancerService, er
 	return service, nil
 }
 
-// InitRateLimiters loads all clients from a database to add them into the rateLimiter
-func (s *LoadBalancerServiceImpl) InitRateLimiters(ctx context.Context) error {
+// InitRateLimiter loads all clients from a database to add them into the rateLimiter
+func (s *LoadBalancerServiceImpl) InitRateLimiter(ctx context.Context) error {
 	clients, err := s.storage.GetAllClients(ctx)
 	if err != nil {
-		slog.Error("failed to get clients" , "error", err)
+		slog.Error("failed to get clients", "error", err)
 		return err
 	}
 
@@ -227,55 +227,17 @@ func (s *LoadBalancerServiceImpl) IsRequestAllowed(ctx context.Context, clientID
 	s.mu.RUnlock()
 
 	if !exists {
-		// Если клиент не найден в rate limiter, пытаемся найти его в БД
-		clients, err := s.storage.GetAllClients(ctx)
-		if err != nil {
-			slog.Error("failed to get clients for rate limiting", "error", err)
-			return false, err
+		// init bucket with default values
+		s.mu.Lock()
+		s.rateLimiter[clientID] = &TokenBucket{
+			Capacity:   10,
+			Tokens:     10,
+			RatePerSec: 1,
+			LastRefill: time.Now(),
 		}
-
-		var clientFound bool
-		var clientConfig models.Client
-
-		for _, client := range clients {
-			if client.ClientID == clientID {
-				clientFound = true
-				clientConfig = client
-				break
-			}
-		}
-
-		// Если клиент найден в БД, создаем для него бакет
-		if clientFound {
-			s.mu.Lock()
-			s.rateLimiter[clientID] = &TokenBucket{
-				Capacity:   clientConfig.Capacity,
-				Tokens:     clientConfig.Capacity,
-				RatePerSec: clientConfig.RatePerSec,
-				LastRefill: time.Now(),
-			}
-			bucket = s.rateLimiter[clientID]
-			s.mu.Unlock()
-		} else {
-			// Если клиент не найден в БД, используем дефолтные значения
-			s.mu.Lock()
-			s.rateLimiter[clientID] = &TokenBucket{
-				Capacity:   10, // Дефолтная емкость
-				Tokens:     10, // Начинаем с полного бакета
-				RatePerSec: 1,  // Дефолтная скорость пополнения
-				LastRefill: time.Now(),
-			}
-			bucket = s.rateLimiter[clientID]
-			s.mu.Unlock()
-		}
+		bucket = s.rateLimiter[clientID]
+		s.mu.Unlock()
 	}
-
-	// Проверяем, есть ли токен для запроса
-	bucket.mu.Lock()
-	defer bucket.mu.Unlock()
-
-	// Перед проверкой пополняем токены
-	s.refillBucket(bucket)
 
 	return bucket.Tokens > 0, nil
 }
@@ -294,6 +256,7 @@ func (s *LoadBalancerServiceImpl) CountRequest(ctx context.Context, clientID str
 
 	if bucket.Tokens > 0 {
 		bucket.Tokens--
+		slog.Info("token removed", "clientID", clientID, "tokens left", bucket.Tokens)
 		return true, nil
 	}
 
@@ -301,5 +264,5 @@ func (s *LoadBalancerServiceImpl) CountRequest(ctx context.Context, clientID str
 }
 
 func (s *LoadBalancerServiceImpl) Shutdown() {
-    close(s.done)
+	close(s.done)
 }

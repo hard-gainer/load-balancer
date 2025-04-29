@@ -68,6 +68,8 @@ func (h *LoadBalancerHandler) HandleRequest(w http.ResponseWriter, r *http.Reque
 		clientID = r.RemoteAddr
 	}
 
+	slog.Info("request gained", "client_id", clientID)
+
 	allowed, err := h.loadBalancerService.IsRequestAllowed(r.Context(), clientID)
 	if err != nil {
 		slog.Error("rate limiting error", "error", err, "client_id", clientID)
@@ -81,6 +83,8 @@ func (h *LoadBalancerHandler) HandleRequest(w http.ResponseWriter, r *http.Reque
 		renderError(w, "Rate limit exceeded", http.StatusTooManyRequests)
 		return
 	}
+
+	slog.Info("request allowed")
 
 	h.mu.Lock()
 
@@ -101,13 +105,14 @@ func (h *LoadBalancerHandler) HandleRequest(w http.ResponseWriter, r *http.Reque
 				continue
 			}
 
-			h.counter = (currIdx + backend.Weight) % len(h.backends)
+			h.counter = (currIdx + 1) % len(h.backends)
 			// push backend to buffer weight-1 times
 			for j := 0; j < backend.Weight-1; j++ {
 				h.buffer = append(h.buffer, backend)
 			}
 			target = backend
 			backendFound = true
+			break
 		}
 	} else {
 		target = h.buffer[0]
@@ -129,6 +134,8 @@ func (h *LoadBalancerHandler) HandleRequest(w http.ResponseWriter, r *http.Reque
 		renderError(w, "Rate limiting error", http.StatusInternalServerError)
 		return
 	}
+
+	slog.Info("reverse proxy the request", "client_id", clientID)
 
 	targetURL, _ := url.Parse(target.URL)
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
