@@ -1,4 +1,0 @@
-POST: 
-{
-    "client_id": ,
-}
