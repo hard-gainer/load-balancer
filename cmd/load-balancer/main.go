@@ -26,8 +26,8 @@ func main() {
 
 	slog.Info("config values:",
 		"servers", cfg.Servers,
-		"app", cfg.AppConfig.Port,
-		"db", cfg.DBConfig.URL,
+		"app_port", cfg.Port,
+		"db_url", cfg.DBURL,
 	)
 
 	slog.Info("initializing storage")
@@ -66,8 +66,9 @@ func main() {
 
 	loggedRouter := api.LoggingMiddleware(router)
 
+	slog.Info("starting the server", "port", cfg.Port)
 	server := http.Server{
-		Addr:    fmt.Sprintf(":%v", cfg.AppConfig.Port),
+		Addr:    fmt.Sprintf(":%v", cfg.Port),
 		Handler: loggedRouter,
 	}
 

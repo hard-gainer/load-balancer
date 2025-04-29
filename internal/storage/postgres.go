@@ -34,7 +34,7 @@ type PostgresRepository struct {
 func NewPostgres(cfg *config.Config) (Repository, error) {
 	const op = "storage.NewPostgres"
 
-	connPool, err := pgxpool.New(context.Background(), cfg.DBConfig.URL)
+	connPool, err := pgxpool.New(context.Background(), cfg.DBURL)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}

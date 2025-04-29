@@ -5,33 +5,23 @@ import (
 	"io"
 	"os"
 
+	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 )
 
-// Config is a main config
 type Config struct {
-	Servers   []Server  `yaml:"servers"`
-	AppConfig AppConfig `yaml:"app"`
-	DBConfig  DBConfig  `yaml:"db"`
+	// data from yaml file
+	Servers []struct {
+		URL    string `yaml:"url"`
+		Weight int    `yaml:"weight"`
+	} `yaml:"servers"`
+
+	// data from json file
+	Port  string `json:"port,omitempty" env:"APP_PORT"`
+	DBURL string `json:"db_url,omitempty" env:"DB_URL"`
 }
 
-// Servers is a config for backends
-type Server struct {
-	URL    string `yaml:"url"`
-	Weight int    `yaml:"weight"`
-}
-
-// AppConfig is a config for application
-type AppConfig struct {
-	Port string `yaml:"port"`
-}
-
-// DBConfig is a config for PostgreSQL
-type DBConfig struct {
-	URL string `yaml:"url"`
-}
-
-// InitConfig parses config.yaml located in the project root
+// InitConfig parses config.yaml and env files located in the project root
 // and initializes a new Config
 func InitConfig() (*Config, error) {
 	file, err := os.Open("config.yaml")
@@ -45,10 +35,18 @@ func InitConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	config := Config{}
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	if err := godotenv.Load(); err != nil {
+		panic("No .env file found")
 	}
 
-	return &config, nil
+	config := &Config{}
+
+	if err := yaml.Unmarshal(data, config); err != nil {
+		return nil, fmt.Errorf("failed to parse yaml config file: %w", err)
+	}
+
+	config.Port = os.Getenv("APP_PORT")
+	config.DBURL = os.Getenv("DB_URL")
+
+	return config, nil
 }
