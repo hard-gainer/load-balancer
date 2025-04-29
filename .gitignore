@@ -1,8 +1,5 @@
 *.drawio
 
-config.yaml
-!config.yaml.example
-
 .env
 !env.example
 test.txt

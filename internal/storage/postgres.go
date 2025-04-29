@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Repository is a main storage interface
 type Repository interface {
 	GetAllClients(ctx context.Context) ([]models.Client, error)
 	SaveClient(ctx context.Context, client models.Client) error
@@ -19,6 +20,7 @@ type Repository interface {
 	Close()
 }
 
+// qurier is set of needed methods from pgx
 type qurier interface {
 	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
@@ -26,6 +28,7 @@ type qurier interface {
 	Close()
 }
 
+// PostgresRepository is Repository and qurier implementation
 type PostgresRepository struct {
 	storage qurier
 }
@@ -137,6 +140,7 @@ func (repo *PostgresRepository) RemoveClient(ctx context.Context, clientID strin
 	return nil
 }
 
+// Close closes a connection with a database
 func (repo *PostgresRepository) Close() {
 	repo.storage.Close()
 }

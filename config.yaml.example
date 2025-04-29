@@ -1,9 +1,0 @@
-servers:
-  - url: ""
-    weight: 1
-  - url: ""
-    weight: 2
-app:
-  port: 8080
-db:
-  url: "conn_string"

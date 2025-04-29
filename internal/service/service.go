@@ -11,6 +11,7 @@ import (
 	"github.com/hard-gainer/load-balancer/internal/storage"
 )
 
+// TokenBucket is a structure for a rate-limiting alogorithm
 type TokenBucket struct {
 	Capacity   int
 	Tokens     int
@@ -19,6 +20,7 @@ type TokenBucket struct {
 	mu         sync.Mutex
 }
 
+// LoadBalancerService is service interface
 type LoadBalancerService interface {
 	FindAllClients(ctx context.Context, backends []models.Backend) ([]models.Client, error)
 	CreateClient(ctx context.Context, client models.Client) error
@@ -29,6 +31,7 @@ type LoadBalancerService interface {
 	Shutdown()
 }
 
+// LoadBalancerServiceImpl is an implementation of LoadBalancerService
 type LoadBalancerServiceImpl struct {
 	storage     storage.Repository
 	rateLimiter map[string]*TokenBucket
@@ -37,6 +40,8 @@ type LoadBalancerServiceImpl struct {
 	done        chan struct{}
 }
 
+// NewLoadBalancerService returns a new LoadBalancerService and
+// starts a goroutine with refillTokens()
 func NewLoadBalancerService(storage storage.Repository) (LoadBalancerService, error) {
 	service := &LoadBalancerServiceImpl{
 		storage:     storage,
@@ -109,11 +114,11 @@ func (s *LoadBalancerServiceImpl) refillBucket(bucket *TokenBucket) {
 	}
 }
 
+// FindAllClients returns all clients
 func (s *LoadBalancerServiceImpl) FindAllClients(
 	ctx context.Context,
 	backends []models.Backend,
 ) ([]models.Client, error) {
-	// const op = "service.FindAllClients"
 	slog.Info("finding all clients", "backends_count", len(backends))
 
 	clients, err := s.storage.GetAllClients(ctx)
@@ -125,6 +130,7 @@ func (s *LoadBalancerServiceImpl) FindAllClients(
 	return clients, nil
 }
 
+// FindAllClients saves a new client
 func (s *LoadBalancerServiceImpl) CreateClient(
 	ctx context.Context,
 	client models.Client,
@@ -161,6 +167,7 @@ func (s *LoadBalancerServiceImpl) CreateClient(
 	return nil
 }
 
+// UpdateClient updates the client fields
 func (s *LoadBalancerServiceImpl) UpdateClient(
 	ctx context.Context,
 	client models.Client,
@@ -200,6 +207,7 @@ func (s *LoadBalancerServiceImpl) UpdateClient(
 	return nil
 }
 
+// DeleteClientA deletes the certain client
 func (s *LoadBalancerServiceImpl) DeleteClient(
 	ctx context.Context,
 	id string,
@@ -221,6 +229,7 @@ func (s *LoadBalancerServiceImpl) DeleteClient(
 	return nil
 }
 
+// IsRequestAllowed checks wheter request is allowed
 func (s *LoadBalancerServiceImpl) IsRequestAllowed(ctx context.Context, clientID string) (bool, error) {
 	s.mu.RLock()
 	bucket, exists := s.rateLimiter[clientID]
@@ -242,6 +251,7 @@ func (s *LoadBalancerServiceImpl) IsRequestAllowed(ctx context.Context, clientID
 	return bucket.Tokens > 0, nil
 }
 
+// CountRequest removes a token from a bucket for a certain client
 func (s *LoadBalancerServiceImpl) CountRequest(ctx context.Context, clientID string) (bool, error) {
 	s.mu.RLock()
 	bucket, exists := s.rateLimiter[clientID]
@@ -263,6 +273,7 @@ func (s *LoadBalancerServiceImpl) CountRequest(ctx context.Context, clientID str
 	return false, nil
 }
 
+// Shutdown shutdowns a server
 func (s *LoadBalancerServiceImpl) Shutdown() {
 	close(s.done)
 }

@@ -1,0 +1,5 @@
+servers:
+  - url: "http://host.docker.internal:8003"
+    weight: 1
+  - url: "http://host.docker.internal:8004"
+    weight: 2

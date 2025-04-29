@@ -14,6 +14,7 @@ import (
 	"github.com/hard-gainer/load-balancer/internal/service"
 )
 
+// LoadBalancerHandler is a main handler
 type LoadBalancerHandler struct {
 	loadBalancerService service.LoadBalancerService
 	backends            []models.Backend
@@ -22,6 +23,7 @@ type LoadBalancerHandler struct {
 	buffer              []models.Backend
 }
 
+// NewLoadBalancerHandler constructs a new LoadBalancerHandler
 func NewLoadBalancerHandler(
 	loadBalancerService service.LoadBalancerService,
 	backends []models.Backend,
@@ -39,22 +41,26 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// FindAllClientsResponse is a helper response structure
 type FindAllClientsResponse struct {
 	Clients []models.Client `json:"clients,omitempty"`
 }
 
-// Client request
+// ClientRequest is a helper request structure
 type ClientRequest struct {
 	ClientID   string `json:"client_id,omitempty"`
 	Capacity   int    `json:"capacity,omitempty"`
 	RatePerSec int    `json:"rate_per_sec,omitempty"`
 }
 
-// Client response
+// ClientResponse is a helper response structure
 type ClientResponse struct {
 	Client models.Client `json:"client"`
 }
 
+// HandleRequest processes incoming HTTP requests by applying rate limiting
+// and performing reverse proxying to one of the available backend servers
+// using the weighted round-robin algorithm.
 func (h *LoadBalancerHandler) HandleRequest(w http.ResponseWriter, r *http.Request) {
 	if len(h.backends) == 0 {
 		slog.Error("no backends available")
@@ -162,7 +168,8 @@ func (h *LoadBalancerHandler) HandleRequest(w http.ResponseWriter, r *http.Reque
 	proxy.ServeHTTP(w, r)
 }
 
-// FindAllClients returns all clients
+// FindAllClients gets a list of all registered clients with their restrictions
+// and returns them in JSON format
 func (h *LoadBalancerHandler) FindAllClients(w http.ResponseWriter, r *http.Request) {
 	clients, err := h.loadBalancerService.FindAllClients(r.Context(), h.backends)
 	if err != nil {
@@ -177,7 +184,10 @@ func (h *LoadBalancerHandler) FindAllClients(w http.ResponseWriter, r *http.Requ
 	renderJSON(w, resp, http.StatusOK)
 }
 
-// CreateClient
+// CreateClient processes a request to create a new client with the specified constraint
+//  parameters.
+// If ClientID is not specified, uses client IP address as identifier.
+// Returns the 201 Created status when the client is successfully created.
 func (h *LoadBalancerHandler) CreateClient(w http.ResponseWriter, r *http.Request) {
 	var req ClientRequest
 	if err := parseJSONBody(r, &req); err != nil {
@@ -227,7 +237,10 @@ func (h *LoadBalancerHandler) CreateClient(w http.ResponseWriter, r *http.Reques
 	}, http.StatusCreated)
 }
 
-// UpdateClient
+// UpdateClient updates the parameters of an existing client (Capacity and RatePerSec).
+// Accepts ClientID, Capacity and RatePerSec via JSON request body.
+// Returns an error if a client with the specified ID is not found.
+// Returns 200 OK status on successful update.
 func (h *LoadBalancerHandler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 	var req ClientRequest
 	if err := parseJSONBody(r, &req); err != nil {
@@ -276,7 +289,10 @@ func (h *LoadBalancerHandler) UpdateClient(w http.ResponseWriter, r *http.Reques
 	}, http.StatusOK)
 }
 
-// DeleteClient
+// DeleteClient deletes a client by the specified clientID.
+// Accepts client_id parameter via query parameters.
+// Returns an error if the client with the specified ID is not found.
+// If deletion is successful, returns status 200 OK.ient
 func (h *LoadBalancerHandler) DeleteClient(w http.ResponseWriter, r *http.Request) {
 	clientID := r.URL.Query().Get("client_id")
 	if clientID == "" {

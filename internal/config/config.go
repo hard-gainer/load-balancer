@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Config is a main config struct
 type Config struct {
 	// data from yaml file
 	Servers []struct {
