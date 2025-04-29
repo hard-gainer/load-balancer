@@ -79,7 +79,7 @@ func (repo *PostgresRepository) GetAllClients(ctx context.Context) ([]models.Cli
 		return nil, fmt.Errorf("%s: rows iteration error: %w", op, err)
 	}
 
-	return []models.Client{}, nil
+	return clients, nil
 }
 
 // SaveClient saves the client into the storage

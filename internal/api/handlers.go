@@ -179,9 +179,10 @@ func (h *LoadBalancerHandler) CreateClient(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	clientID := req.ClientID
+
 	if req.ClientID == "" {
-		renderError(w, "ClientID is required", http.StatusBadRequest)
-		return
+		clientID = r.RemoteAddr
 	}
 
 	if req.Capacity <= 0 {
@@ -195,7 +196,7 @@ func (h *LoadBalancerHandler) CreateClient(w http.ResponseWriter, r *http.Reques
 	}
 
 	client := models.Client{
-		ClientID:   req.ClientID,
+		ClientID:   clientID,
 		Capacity:   req.Capacity,
 		RatePerSec: req.RatePerSec,
 	}
