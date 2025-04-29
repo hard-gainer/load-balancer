@@ -3,3 +3,6 @@ servers:
     weight: 1
   - url: "http://host.docker.internal:8004"
     weight: 2
+default:
+  capacity: 10
+  rate_per_sec: 1

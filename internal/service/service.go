@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hard-gainer/load-balancer/internal/config"
 	"github.com/hard-gainer/load-balancer/internal/models"
 	"github.com/hard-gainer/load-balancer/internal/storage"
 )
@@ -33,22 +34,44 @@ type LoadBalancerService interface {
 
 // LoadBalancerServiceImpl is an implementation of LoadBalancerService
 type LoadBalancerServiceImpl struct {
-	storage     storage.Repository
-	rateLimiter map[string]*TokenBucket
-	mu          sync.RWMutex
-	ticker      *time.Ticker
-	done        chan struct{}
+	storage           storage.Repository
+	rateLimiter       map[string]*TokenBucket
+	mu                sync.RWMutex
+	ticker            *time.Ticker
+	done              chan struct{}
+	defaultCapacity   int
+	defaultRatePerSec int
 }
 
 // NewLoadBalancerService returns a new LoadBalancerService and
 // starts a goroutine with refillTokens()
-func NewLoadBalancerService(storage storage.Repository) (LoadBalancerService, error) {
+func NewLoadBalancerService(
+	storage storage.Repository,
+	cfg *config.Config,
+) (LoadBalancerService, error) {
 	service := &LoadBalancerServiceImpl{
-		storage:     storage,
-		rateLimiter: make(map[string]*TokenBucket),
-		ticker:      time.NewTicker(time.Second),
-		done:        make(chan struct{}),
+		storage:           storage,
+		rateLimiter:       make(map[string]*TokenBucket),
+		ticker:            time.NewTicker(time.Second),
+		done:              make(chan struct{}),
+		defaultCapacity:   cfg.ClientDefaultVals.Capacity,
+		defaultRatePerSec: cfg.ClientDefaultVals.RatePerSec,
 	}
+
+	if service.defaultCapacity <= 0 {
+		service.defaultCapacity = 10
+		slog.Warn("invalid default capacity in config, using fallback value",
+			"value", 10)
+	}
+	if service.defaultRatePerSec <= 0 {
+		service.defaultRatePerSec = 1
+		slog.Warn("invalid default rate_per_sec in config, using fallback value",
+			"value", 1)
+	}
+
+	slog.Info("loaded client configuration",
+		"capacity", service.defaultCapacity,
+		"rate_per_sec", service.defaultRatePerSec)
 
 	if err := service.InitRateLimiter(context.Background()); err != nil {
 		return nil, err
@@ -236,16 +259,33 @@ func (s *LoadBalancerServiceImpl) IsRequestAllowed(ctx context.Context, clientID
 	s.mu.RUnlock()
 
 	if !exists {
-		// init bucket with default values
+		slog.Info("response from a new client")
+
 		s.mu.Lock()
+		defer s.mu.Unlock()
+
+		newClient := models.Client{
+			ClientID:   clientID,
+			Capacity:   s.defaultCapacity,
+			RatePerSec: s.defaultRatePerSec,
+		}
+
+		slog.Info("adding new client to database")
+		if err := s.storage.SaveClient(ctx, newClient); err != nil {
+			slog.Error("failed to save client to database",
+				"error", err, "client_id", clientID)
+		} else {
+			slog.Info("created client with default values in database",
+				"client_id", clientID)
+		}
+
 		s.rateLimiter[clientID] = &TokenBucket{
-			Capacity:   10,
-			Tokens:     10,
-			RatePerSec: 1,
+			Capacity:   s.defaultCapacity,
+			Tokens:     s.defaultCapacity,
+			RatePerSec: s.defaultRatePerSec,
 			LastRefill: time.Now(),
 		}
 		bucket = s.rateLimiter[clientID]
-		s.mu.Unlock()
 	}
 
 	return bucket.Tokens > 0, nil

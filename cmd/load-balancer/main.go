@@ -28,6 +28,8 @@ func main() {
 		"servers", cfg.Servers,
 		"app_port", cfg.Port,
 		"db_url", cfg.DBURL,
+		"default_capacity", cfg.Capacity,
+		"default_rate_per_sec", cfg.RatePerSec,
 	)
 
 	slog.Info("initializing storage")
@@ -39,7 +41,7 @@ func main() {
 	slog.Info("storage successfully initialized")
 
 	slog.Info("initializing service")
-	service, err := service.NewLoadBalancerService(storage)
+	service, err := service.NewLoadBalancerService(storage, cfg)
 	if err != nil {
 		slog.Error("failed to initialize service", "error", err)
 		os.Exit(1)

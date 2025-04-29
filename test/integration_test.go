@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hard-gainer/load-balancer/internal/api"
+	"github.com/hard-gainer/load-balancer/internal/config"
 	"github.com/hard-gainer/load-balancer/internal/models"
 	"github.com/hard-gainer/load-balancer/internal/service"
 	"github.com/stretchr/testify/assert"
@@ -58,7 +59,14 @@ func setupTestEnvironment(t testing.TB) (
 	err := repo.SaveClient(ctx, testClient)
 	require.NoError(t, err, "Failed to save client")
 
-	service, err := service.NewLoadBalancerService(repo)
+	testConfig := &config.Config{
+		ClientDefaultVals: config.ClientDefaultVals{
+			Capacity:   10,
+			RatePerSec: 1,
+		},
+	}
+
+	service, err := service.NewLoadBalancerService(repo, testConfig)
 	if err != nil {
 		t.Fatalf("Failed to create service: %v", err)
 	}

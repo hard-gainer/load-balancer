@@ -17,9 +17,15 @@ type Config struct {
 		Weight int    `yaml:"weight"`
 	} `yaml:"servers"`
 
+	ClientDefaultVals `yaml:"default"`
+
 	// data from json file
 	Port  string `json:"port,omitempty" env:"APP_PORT"`
 	DBURL string `json:"db_url,omitempty" env:"DB_URL"`
+}
+type ClientDefaultVals struct {
+	Capacity   int `yaml:"capacity"`     // maximum amount of tokens
+	RatePerSec int `yaml:"rate_per_sec"` // token refill rate
 }
 
 // InitConfig parses config.yaml and env files located in the project root
