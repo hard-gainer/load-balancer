@@ -245,7 +245,7 @@ curl -X DELETE "http://localhost:8080/clients?client_id=172.18.0.1:49586"
 
 ### Обработка запроса:
 ```bash
-curl -X GET http://localhost:8080/request \
+curl -X GET http://localhost:8080/requests \
 -H "client_id: 172.18.0.1:49586"
 ```
 
