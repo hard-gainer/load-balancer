@@ -62,7 +62,7 @@ func main() {
 	router.HandleFunc("POST /clients", handler.CreateClient)
 	router.HandleFunc("PUT /clients", handler.UpdateClient)
 	router.HandleFunc("DELETE /clients", handler.DeleteClient)
-	router.HandleFunc("/request", handler.HandleRequest)
+	router.HandleFunc("/requests", handler.HandleRequest)
 
 	loggedRouter := api.LoggingMiddleware(router)
 
